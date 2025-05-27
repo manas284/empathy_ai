@@ -10,7 +10,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { ElevenLabsClient } from 'elevenlabs'; // Changed import
+import { ElevenLabsClient } from 'elevenlabs';
 
 const GenerateSpeechInputSchema = z.object({
   text: z.string().describe('The text to be converted to speech.'),
@@ -36,8 +36,9 @@ const generateSpeechFlow = ai.defineFlow(
   async (input) => {
     const apiKey = process.env.ELEVENLABS_API_KEY;
     if (!apiKey) {
-      console.error('ELEVENLABS_API_KEY environment variable is not set.');
-      throw new Error('ELEVENLABS_API_KEY environment variable is not set.');
+      const errorMsg = 'ELEVENLABS_API_KEY environment variable is not set. Please ensure it is correctly defined in your .env file.';
+      console.error(errorMsg);
+      throw new Error(errorMsg);
     }
 
     const femaleVoiceId = process.env.ELEVENLABS_FEMALE_VOICE_ID || '21m00Tcm4TlvDq8ikWAM'; // Default Rachel
@@ -45,7 +46,7 @@ const generateSpeechFlow = ai.defineFlow(
 
     const voiceId = input.voiceGender === 'female' ? femaleVoiceId : maleVoiceId;
     
-    const elevenlabs = new ElevenLabsClient({ apiKey }); // Changed instantiation
+    const elevenlabs = new ElevenLabsClient({ apiKey });
 
     try {
       const audioStream = await elevenlabs.generate({
@@ -73,8 +74,13 @@ const generateSpeechFlow = ai.defineFlow(
     } catch (error) {
       console.error('Error generating speech with ElevenLabs:', error);
       if (error instanceof Error) {
-        const errorMessage = (error as any).message || 'Unknown ElevenLabs API error';
-        throw new Error(`ElevenLabs API error: ${errorMessage}`);
+        let errorMessage = (error as any).message || 'Unknown ElevenLabs API error';
+        if (errorMessage.includes('Status code: 401')) {
+          errorMessage = `ElevenLabs API Authorization (401) Error: ${errorMessage}. Please double-check your ELEVENLABS_API_KEY in the .env file. Ensure it is correct and has the necessary permissions.`;
+        } else {
+          errorMessage = `ElevenLabs API error: ${errorMessage}`;
+        }
+        throw new Error(errorMessage);
       }
       throw new Error('Unknown error generating speech with ElevenLabs');
     }
