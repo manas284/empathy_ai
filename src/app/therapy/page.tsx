@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -94,7 +95,7 @@ export default function TherapyPage() {
       setMessages(prev => [...prev, newAiMessage]);
       setEmpathyLevel(aiResponse.updatedEmpathyLevel);
 
-    } catch (error)_ {
+    } catch (error) {
       console.error("Error getting AI response:", error);
       const errorAiMessage: ChatMessage = {
         id: crypto.randomUUID(),
