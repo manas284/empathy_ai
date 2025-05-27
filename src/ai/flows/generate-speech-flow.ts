@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview Generates speech from text using ElevenLabs API.
@@ -9,7 +10,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import ElevenLabs from 'elevenlabs';
+import * as ElevenLabsPackage from 'elevenlabs';
 
 const GenerateSpeechInputSchema = z.object({
   text: z.string().describe('The text to be converted to speech.'),
@@ -44,7 +45,20 @@ const generateSpeechFlow = ai.defineFlow(
 
     const voiceId = input.voiceGender === 'female' ? femaleVoiceId : maleVoiceId;
 
-    const elevenlabs = new ElevenLabs({ apiKey });
+    const ElevenLabsConstructor = ElevenLabsPackage.default;
+
+    if (typeof ElevenLabsConstructor !== 'function') {
+      console.error(
+        'Failed to import ElevenLabs constructor. ElevenLabsPackage.default is not a function:', 
+        ElevenLabsConstructor
+      );
+      if (ElevenLabsPackage) {
+        console.error('Keys of ElevenLabsPackage:', Object.keys(ElevenLabsPackage));
+      }
+      throw new Error('ElevenLabs constructor is not a function. Check import or library version.');
+    }
+    
+    const elevenlabs = new ElevenLabsConstructor({ apiKey });
 
     try {
       const audioStream = await elevenlabs.generate({
@@ -72,7 +86,9 @@ const generateSpeechFlow = ai.defineFlow(
     } catch (error) {
       console.error('Error generating speech with ElevenLabs:', error);
       if (error instanceof Error) {
-        throw new Error(`ElevenLabs API error: ${error.message}`);
+        // It's good practice to check if the error has a 'message' property
+        const errorMessage = (error as any).message || 'Unknown ElevenLabs API error';
+        throw new Error(`ElevenLabs API error: ${errorMessage}`);
       }
       throw new Error('Unknown error generating speech with ElevenLabs');
     }
