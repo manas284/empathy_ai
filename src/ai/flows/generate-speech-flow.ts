@@ -10,7 +10,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import * as ElevenLabsNodeModule from 'elevenlabs-node';
+import { ElevenLabsClient } from 'elevenlabs';
 
 const GenerateSpeechInputSchema = z.object({
   text: z.string().describe('The text to be converted to speech.'),
@@ -46,35 +46,29 @@ const generateSpeechFlow = ai.defineFlow(
 
     const voiceId = input.voiceGender === 'female' ? femaleVoiceId : maleVoiceId;
     
-    // Attempt to get the constructor, trying common CJS export patterns
-    const ElevenLabsConstructor = ElevenLabsNodeModule.default || (ElevenLabsNodeModule as any).ElevenLabs || ElevenLabsNodeModule;
-
-    if (typeof ElevenLabsConstructor !== 'function') {
-      console.error('ElevenLabs constructor resolution failed. Module keys:', Object.keys(ElevenLabsNodeModule));
-      throw new Error('Could not initialize ElevenLabs client: Constructor not found in elevenlabs-node package.');
-    }
-
-    const elevenlabs = new ElevenLabsConstructor({ apiKey });
+    const elevenlabs = new ElevenLabsClient({ apiKey });
 
     try {
+      // The official 'elevenlabs' SDK returns the audio directly as a ReadableStream or Buffer.
+      // We need to convert this to a base64 data URI.
       const audioStream = await elevenlabs.generate({
         voice: voiceId,
         text: input.text,
-        model_id: 'eleven_multilingual_v2',
+        model_id: 'eleven_multilingual_v2', // Ensure this model supports the chosen voice
         voice_settings: {
           stability: 0.5,
           similarity_boost: 0.75,
           style: 0.0, 
           use_speaker_boost: true,
         },
-        output_format: 'mp3_44100_128' // Ensuring a common output format
+        output_format: 'mp3_44100_128'
       });
       
       const chunks: Uint8Array[] = [];
       for await (const chunk of audioStream) {
-        chunks.push(new Uint8Array(chunk));
+        chunks.push(chunk); // The official SDK directly yields Uint8Array chunks
       }
-      const audioBuffer = Buffer.from(chunks.reduce((acc, chunk) => acc.concat(Array.from(chunk)), []));
+      const audioBuffer = Buffer.concat(chunks);
       const audioDataUri = `data:audio/mpeg;base64,${audioBuffer.toString('base64')}`;
 
       return { audioDataUri };
@@ -83,9 +77,12 @@ const generateSpeechFlow = ai.defineFlow(
       console.error('Error generating speech with ElevenLabs:', error);
       if (error instanceof Error) {
         let errorMessage = (error as any).message || 'Unknown ElevenLabs API error';
-        if (errorMessage.includes('Status code: 401')) {
+        if (errorMessage.includes('Status code: 401') || (error as any).status === 401 ) {
           errorMessage = `ElevenLabs API Authorization (401) Error: ${errorMessage}. Please double-check your ELEVENLABS_API_KEY in the .env file. Ensure it is correct and has the necessary permissions.`;
-        } else {
+        } else if (errorMessage.toLowerCase().includes('generate is not a function')) {
+            errorMessage = `ElevenLabs API error: The 'generate' method was not found. This might be due to an incorrect client instantiation or SDK version mismatch. Expected official 'elevenlabs' SDK.`;
+        }
+         else {
           errorMessage = `ElevenLabs API error: ${errorMessage}`;
         }
         throw new Error(errorMessage);

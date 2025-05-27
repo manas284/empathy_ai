@@ -8,7 +8,7 @@
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
     "build": "next build",
     "deploy": "vercel --prod",
-    "start": "next start",    
+    "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },
@@ -42,7 +42,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
     "dotenv": "^16.5.0",
-    "elevenlabs-node": "^2.0.3",
+    "elevenlabs": "latest",
     "firebase": "^11.8.1",
     "genkit": "^1.8.0",
     "lucide-react": "^0.475.0",
