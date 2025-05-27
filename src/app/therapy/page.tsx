@@ -41,12 +41,11 @@ export default function TherapyPage() {
         const playPromise = audioElement.play();
         if (playPromise !== undefined) {
           playPromise.catch(error => {
-            console.error("Error playing audio:", error);
-            // "AbortError" is common when play is interrupted by another action.
-            // Avoid spamming toasts for this specific, often expected, interruption.
+            // AbortError is expected if playback is interrupted by a new play request, pause, or src change.
             if (error.name === 'AbortError') {
-              console.log("Audio playback aborted, likely by a new user action or AI response.");
+              console.log("Audio playback aborted (expected interruption).");
             } else {
+              console.error("Error playing audio:", error);
               toast({ variant: "destructive", title: "Audio Playback Error", description: "Could not play the AI's voice." });
             }
           });
@@ -54,9 +53,11 @@ export default function TherapyPage() {
       } else {
         // If audioDataUri is null, ensure audio is stopped and reset
         audioElement.pause();
-        if (audioElement.src) { // Only act if src was previously set
+        // Check if src exists before trying to removeAttribute and load
+        // This avoids "Failed to load" errors if src was never set or already cleared
+        if (audioElement.currentSrc && audioElement.currentSrc !== '') {
           audioElement.removeAttribute('src'); // Clear the source
-          audioElement.load(); // Reset the media element state
+          audioElement.load(); // Reset the media element state, aborts loading.
         }
       }
     }
@@ -64,27 +65,27 @@ export default function TherapyPage() {
 
   const playAiSpeech = async (text: string, voice: VoiceGender) => {
     if (audioRef.current) {
-      audioRef.current.pause(); // Explicitly pause current playback
+      audioRef.current.pause(); // Explicitly pause current playback. This may cause AbortError for the *previous* play, which is handled.
     }
-    setAudioDataUri(null); // Trigger useEffect to clean up and reset the audio element
-
-    // Allow the useEffect to process the null audioDataUri state update
-    await new Promise(resolve => setTimeout(resolve, 0));
 
     try {
       const speechResponse = await generateSpeech({ text, voiceGender: voice });
-      setAudioDataUri(speechResponse.audioDataUri); // Trigger useEffect to set new src and play
+      setAudioDataUri(speechResponse.audioDataUri); // Trigger useEffect to set new src and play.
     } catch (speechError) {
       console.error("Error generating speech:", speechError);
       toast({ variant: "destructive", title: "Speech Generation Error", description: "Could not generate audio for the AI response." });
-      // Ensure audioDataUri remains null if speech generation fails (already set above)
+      setAudioDataUri(null); // Ensure audioDataUri is null if speech generation fails, to trigger cleanup.
     }
   };
 
   const handleProfileSubmit = async (data: UserProfile) => {
     setIsLoading(true);
     setUserProfile(data);
-    // playAiSpeech will handle stopping/clearing previous audio
+    
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    setAudioDataUri(null); // Clear any existing audio initially
 
     try {
       const [recoResponse, adaptResponse] = await Promise.all([
@@ -109,18 +110,16 @@ export default function TherapyPage() {
     } catch (error) {
       console.error("Error processing profile:", error);
       toast({ variant: "destructive", title: "Error", description: "Could not process your profile. Please try again." });
-      // Ensure audio is cleared if profile processing fails before playAiSpeech is called or if it fails
       if (audioRef.current) {
           audioRef.current.pause();
       }
-      setAudioDataUri(null);
+      setAudioDataUri(null); // Ensure audio is cleared on error
     }
     setIsLoading(false);
   };
 
   const handleSendMessage = async (messageText: string) => {
     if (!userProfile) return;
-    // playAiSpeech will handle stopping/clearing previous audio
 
     const newUserMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -164,25 +163,20 @@ export default function TherapyPage() {
       };
       setMessages(prev => [...prev, errorAiMessage]);
       toast({ variant: "destructive", title: "Error", description: "Could not get AI response." });
-      // Ensure audio is cleared if AI response generation fails
       if (audioRef.current) {
           audioRef.current.pause();
       }
-      setAudioDataUri(null);
+      setAudioDataUri(null); // Ensure audio is cleared on error
     }
     setIsLoadingAiResponse(false);
   };
   
   const handleVoiceGenderChange = (gender: VoiceGender) => {
     setCurrentVoiceGender(gender);
-    // Stop any currently playing audio and clear it.
     if (audioRef.current) {
       audioRef.current.pause();
     }
     setAudioDataUri(null); // This will trigger the useEffect to reset the audio element
-    // If the last AI message should be re-spoken with the new voice,
-    // you could add logic here to call playAiSpeech with messages[messages.length-1].text,
-    // but for now, just stopping the current audio is fine.
   };
 
   return (
