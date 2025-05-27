@@ -139,18 +139,18 @@ export function UserInputForm({ onSubmit, isLoading }: UserInputFormProps) {
                 <FormItem>
                   <FormLabel>Vulnerability Score (0-10)</FormLabel>
                    <FormControl>
-                    <>
-                    <Slider
-                      min={0} max={10} step={1}
-                      defaultValue={[field.value]}
-                      onValueChange={(value) => {
-                        field.onChange(value[0]);
-                        setVulnerability(value[0]);
-                      }}
-                      className="my-2"
-                    />
-                    <p className="text-sm text-muted-foreground text-center">Current Score: {vulnerability}</p>
-                    </>
+                    <div>
+                      <Slider
+                        min={0} max={10} step={1}
+                        defaultValue={[field.value]}
+                        onValueChange={(value) => {
+                          field.onChange(value[0]);
+                          setVulnerability(value[0]);
+                        }}
+                        className="my-2"
+                      />
+                      <p className="text-sm text-muted-foreground text-center">Current Score: {vulnerability}</p>
+                    </div>
                   </FormControl>
                   <FormDescription>How vulnerable do you feel currently?</FormDescription>
                   <FormMessage />
