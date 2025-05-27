@@ -6,10 +6,9 @@ import { AppShell } from '@/components/AppShell';
 import { UserInputForm } from '@/components/therapy/UserInputForm';
 import { ChatInterface } from '@/components/therapy/ChatInterface';
 import { AudioControls, type VoiceGender } from '@/components/therapy/AudioControls';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Loader2, Info, MessageSquare } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Loader2, Info } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast'; // Corrected: useToast from hooks
 import type { UserProfile, TherapyRecommendation, AdaptedLanguageStyle, ChatMessage } from '@/types';
 
 import { personalizeTherapyRecommendations } from '@/ai/flows/personalize-therapy-recommendations';
@@ -36,13 +35,29 @@ export default function TherapyPage() {
 
   useEffect(() => {
     if (audioDataUri && audioRef.current) {
-      audioRef.current.play().catch(error => console.error("Error playing audio:", error));
+      audioRef.current.src = audioDataUri; // Set src explicitly
+      audioRef.current.play().catch(error => {
+        console.error("Error playing audio:", error)
+        toast({ variant: "destructive", title: "Audio Playback Error", description: "Could not play the AI's voice." });
+      });
     }
-  }, [audioDataUri]);
+  }, [audioDataUri, toast]);
+
+  const playAiSpeech = async (text: string, voice: VoiceGender) => {
+    try {
+      const speechResponse = await generateSpeech({ text, voiceGender: voice });
+      setAudioDataUri(speechResponse.audioDataUri);
+    } catch (speechError) {
+      console.error("Error generating speech:", speechError);
+      toast({ variant: "destructive", title: "Speech Generation Error", description: "Could not generate audio for the AI response." });
+      setAudioDataUri(null); // Clear any old audio URI
+    }
+  };
 
   const handleProfileSubmit = async (data: UserProfile) => {
     setIsLoading(true);
     setUserProfile(data);
+    setAudioDataUri(null); // Clear previous audio
     try {
       const [recoResponse, adaptResponse] = await Promise.all([
         personalizeTherapyRecommendations(data),
@@ -59,14 +74,7 @@ export default function TherapyPage() {
         timestamp: new Date(),
       }]);
 
-      // Generate speech for the initial AI message
-      try {
-        const speechResponse = await generateSpeech({ text: initialAiText, voiceGender: currentVoiceGender });
-        setAudioDataUri(speechResponse.audioDataUri);
-      } catch (speechError) {
-        console.error("Error generating speech for initial message:", speechError);
-        toast({ variant: "destructive", title: "Speech Error", description: "Could not generate audio for the AI response." });
-      }
+      await playAiSpeech(initialAiText, currentVoiceGender);
 
       setStage('chat');
       toast({ title: "Profile processed", description: "Personalized therapy session ready." });
@@ -111,14 +119,7 @@ export default function TherapyPage() {
       setMessages(prev => [...prev, newAiMessage]);
       setEmpathyLevel(aiResponse.updatedEmpathyLevel);
 
-      // Generate speech for the AI response
-      try {
-        const speechResponse = await generateSpeech({ text: aiResponse.response, voiceGender: currentVoiceGender });
-        setAudioDataUri(speechResponse.audioDataUri);
-      } catch (speechError) {
-         console.error("Error generating speech for AI response:", speechError);
-         toast({ variant: "destructive", title: "Speech Error", description: "Could not generate audio for the AI response." });
-      }
+      await playAiSpeech(aiResponse.response, currentVoiceGender);
 
     } catch (error) {
       console.error("Error getting AI response:", error);
@@ -136,6 +137,11 @@ export default function TherapyPage() {
   
   const handleVoiceGenderChange = (gender: VoiceGender) => {
     setCurrentVoiceGender(gender);
+    setAudioDataUri(null); // Stop any currently playing audio if voice changes
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = '';
+    }
   };
 
   return (
@@ -182,7 +188,7 @@ export default function TherapyPage() {
           </div>
         )}
       </div>
-      <audio ref={audioRef} src={audioDataUri || undefined} hidden />
+      <audio ref={audioRef} hidden />
     </AppShell>
   );
 }
