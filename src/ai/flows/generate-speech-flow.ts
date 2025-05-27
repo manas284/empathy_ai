@@ -10,7 +10,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { ElevenLabsClient } from 'elevenlabs';
+import * as ElevenLabsNodeModule from 'elevenlabs-node';
 
 const GenerateSpeechInputSchema = z.object({
   text: z.string().describe('The text to be converted to speech.'),
@@ -46,7 +46,15 @@ const generateSpeechFlow = ai.defineFlow(
 
     const voiceId = input.voiceGender === 'female' ? femaleVoiceId : maleVoiceId;
     
-    const elevenlabs = new ElevenLabsClient({ apiKey });
+    // Attempt to get the constructor, trying common CJS export patterns
+    const ElevenLabsConstructor = ElevenLabsNodeModule.default || (ElevenLabsNodeModule as any).ElevenLabs || ElevenLabsNodeModule;
+
+    if (typeof ElevenLabsConstructor !== 'function') {
+      console.error('ElevenLabs constructor resolution failed. Module keys:', Object.keys(ElevenLabsNodeModule));
+      throw new Error('Could not initialize ElevenLabs client: Constructor not found in elevenlabs-node package.');
+    }
+
+    const elevenlabs = new ElevenLabsConstructor({ apiKey });
 
     try {
       const audioStream = await elevenlabs.generate({
@@ -62,11 +70,11 @@ const generateSpeechFlow = ai.defineFlow(
         output_format: 'mp3_44100_128' // Ensuring a common output format
       });
       
-      const chunks: Buffer[] = [];
+      const chunks: Uint8Array[] = [];
       for await (const chunk of audioStream) {
-        chunks.push(chunk as Buffer);
+        chunks.push(new Uint8Array(chunk));
       }
-      const audioBuffer = Buffer.concat(chunks);
+      const audioBuffer = Buffer.from(chunks.reduce((acc, chunk) => acc.concat(Array.from(chunk)), []));
       const audioDataUri = `data:audio/mpeg;base64,${audioBuffer.toString('base64')}`;
 
       return { audioDataUri };
@@ -86,4 +94,3 @@ const generateSpeechFlow = ai.defineFlow(
     }
   }
 );
-

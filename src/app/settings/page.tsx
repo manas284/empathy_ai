@@ -1,3 +1,10 @@
+"use client";
+
+
+import React from 'react'; // Add this line
+
+
+// ... rest of your imports and component code
 import { AppShell } from '@/components/AppShell';
 import { AudioControls } from '@/components/therapy/AudioControls';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
