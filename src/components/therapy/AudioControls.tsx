@@ -8,26 +8,38 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Volume2, Play, Pause, FastForward, User, Users, Speaker } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
+export type VoiceGender = 'male' | 'female';
+
 interface AudioControlsProps {
-  onVoiceChange?: (voice: 'male' | 'female') => void;
+  onVoiceChange?: (voice: VoiceGender) => void;
+  initialVoice?: VoiceGender;
   // Add more props for actual audio functionality if needed
 }
 
-export function AudioControls({ onVoiceChange }: AudioControlsProps) {
+export function AudioControls({ onVoiceChange, initialVoice = 'female' }: AudioControlsProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolume] = useState([50]);
   const [playbackSpeed, setPlaybackSpeed] = useState([1]);
-  const [selectedVoice, setSelectedVoice] = useState<'male' | 'female'>('female');
+  const [selectedVoice, setSelectedVoice] = useState<VoiceGender>(initialVoice);
   const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
   }, []);
 
+  useEffect(() => {
+    // Propagate initial voice if onVoiceChange is provided
+    if (isClient && onVoiceChange) {
+      onVoiceChange(selectedVoice);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isClient]); // Only on mount after client check
+
 
   const handlePlayPause = () => {
     setIsPlaying(!isPlaying);
-    // Add actual play/pause logic here
+    // Add actual play/pause logic here for relaxation exercise
+    console.log("Play/Pause Relaxation Exercise (not implemented)");
   };
 
   const handleVolumeChange = (value: number[]) => {
@@ -40,7 +52,7 @@ export function AudioControls({ onVoiceChange }: AudioControlsProps) {
     // Add actual speed change logic here
   };
 
-  const handleVoiceChangeInternal = (value: 'male' | 'female') => {
+  const handleVoiceChangeInternal = (value: VoiceGender) => {
     setSelectedVoice(value);
     if (onVoiceChange) {
       onVoiceChange(value);
@@ -49,7 +61,8 @@ export function AudioControls({ onVoiceChange }: AudioControlsProps) {
   };
 
   if (!isClient) {
-    return <div className="p-4 border rounded-lg"><p>Loading audio controls...</p></div>;
+    // Render a placeholder or null during SSR to avoid hydration mismatches
+    return <div className="p-4 border rounded-lg animate-pulse bg-muted/50"><p>Loading audio controls...</p></div>;
   }
 
   return (
@@ -93,7 +106,7 @@ export function AudioControls({ onVoiceChange }: AudioControlsProps) {
         </div>
         
         <div className="flex items-center justify-center space-x-4">
-            <Button onClick={handlePlayPause} variant="outline" size="lg" aria-label={isPlaying ? 'Pause' : 'Play'}>
+            <Button onClick={handlePlayPause} variant="outline" size="lg" aria-label={isPlaying ? 'Pause Exercise' : 'Play Relaxation Exercise'}>
               {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
               <span className="ml-2">{isPlaying ? 'Pause Exercise' : 'Play Relaxation Exercise'}</span>
             </Button>
@@ -101,12 +114,11 @@ export function AudioControls({ onVoiceChange }: AudioControlsProps) {
 
         <div>
           <Label className="mb-2 block font-medium flex items-center gap-2">
-             Voice Preference
+             AI Voice Preference
           </Label>
           <RadioGroup
-            defaultValue="female"
             value={selectedVoice}
-            onValueChange={(value: 'male' | 'female') => handleVoiceChangeInternal(value)}
+            onValueChange={(value: string) => handleVoiceChangeInternal(value as VoiceGender)}
             className="flex space-x-4"
           >
             <div className="flex items-center space-x-2">

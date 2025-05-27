@@ -1,11 +1,11 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { UserInputForm } from '@/components/therapy/UserInputForm';
 import { ChatInterface } from '@/components/therapy/ChatInterface';
-import { AudioControls } from '@/components/therapy/AudioControls';
+import { AudioControls, type VoiceGender } from '@/components/therapy/AudioControls';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, Info, MessageSquare } from 'lucide-react';
@@ -15,6 +15,7 @@ import type { UserProfile, TherapyRecommendation, AdaptedLanguageStyle, ChatMess
 import { personalizeTherapyRecommendations } from '@/ai/flows/personalize-therapy-recommendations';
 import { adaptLanguageAndTechniques } from '@/ai/flows/adapt-language-and-techniques';
 import { generateEmpatheticResponse } from '@/ai/flows/generate-empathetic-responses';
+import { generateSpeech } from '@/ai/flows/generate-speech-flow';
 
 type TherapyStage = 'initialData' | 'recommendations' | 'chat';
 
@@ -24,14 +25,20 @@ export default function TherapyPage() {
   const [recommendations, setRecommendations] = useState<TherapyRecommendation | null>(null);
   const [adaptedStyle, setAdaptedStyle] = useState<AdaptedLanguageStyle | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [empathyLevel, setEmpathyLevel] = useState(0); // Initial empathy level for AI
+  const [empathyLevel, setEmpathyLevel] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingAiResponse, setIsLoadingAiResponse] = useState(false);
+  const [currentVoiceGender, setCurrentVoiceGender] = useState<VoiceGender>('female');
+  const [audioDataUri, setAudioDataUri] = useState<string | null>(null);
 
+  const audioRef = useRef<HTMLAudioElement>(null);
   const { toast } = useToast();
 
-  // Effect to scroll to bottom of chat, can be part of ChatInterface
-  // Or managed here if more complex logic is needed for other elements
+  useEffect(() => {
+    if (audioDataUri && audioRef.current) {
+      audioRef.current.play().catch(error => console.error("Error playing audio:", error));
+    }
+  }, [audioDataUri]);
 
   const handleProfileSubmit = async (data: UserProfile) => {
     setIsLoading(true);
@@ -44,13 +51,24 @@ export default function TherapyPage() {
       setRecommendations(recoResponse);
       setAdaptedStyle(adaptResponse);
       
+      const initialAiText = `Thank you for sharing. Based on your information, here are some initial thoughts and how we might proceed:\n\n**Recommendations:**\n${recoResponse.recommendations}\n\n**Our Approach:**\n${adaptResponse.adaptedLanguage}\n\nFeel free to share what's on your mind to begin our conversation.`;
       setMessages([{
         id: crypto.randomUUID(),
         sender: 'ai',
-        text: `Thank you for sharing. Based on your information, here are some initial thoughts and how we might proceed:\n\n**Recommendations:**\n${recoResponse.recommendations}\n\n**Our Approach:**\n${adaptResponse.adaptedLanguage}\n\nFeel free to share what's on your mind to begin our conversation.`,
+        text: initialAiText,
         timestamp: new Date(),
       }]);
-      setStage('chat'); // Directly to chat after showing recommendations in first message
+
+      // Generate speech for the initial AI message
+      try {
+        const speechResponse = await generateSpeech({ text: initialAiText, voiceGender: currentVoiceGender });
+        setAudioDataUri(speechResponse.audioDataUri);
+      } catch (speechError) {
+        console.error("Error generating speech for initial message:", speechError);
+        toast({ variant: "destructive", title: "Speech Error", description: "Could not generate audio for the AI response." });
+      }
+
+      setStage('chat');
       toast({ title: "Profile processed", description: "Personalized therapy session ready." });
     } catch (error) {
       console.error("Error processing profile:", error);
@@ -61,6 +79,7 @@ export default function TherapyPage() {
 
   const handleSendMessage = async (messageText: string) => {
     if (!userProfile) return;
+    setAudioDataUri(null); // Clear previous audio
 
     const newUserMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -72,16 +91,13 @@ export default function TherapyPage() {
     setIsLoadingAiResponse(true);
 
     try {
-      // Map UI 'Medium' anxiety to 'High' for this specific AI flow if needed
-      // The schema for generateEmpatheticResponse uses 'Low' | 'High'
       let apiAnxietyLevel: 'Low' | 'High' = 'Low';
       if (userProfile.anxietyLevel === 'Medium') apiAnxietyLevel = 'High';
       else if (userProfile.anxietyLevel === 'High') apiAnxietyLevel = 'High';
 
-
       const aiResponse = await generateEmpatheticResponse({
         ...userProfile,
-        anxietyLevel: apiAnxietyLevel, // Use mapped value
+        anxietyLevel: apiAnxietyLevel,
         currentMessage: messageText,
         empathyLevel: empathyLevel,
       });
@@ -94,6 +110,15 @@ export default function TherapyPage() {
       };
       setMessages(prev => [...prev, newAiMessage]);
       setEmpathyLevel(aiResponse.updatedEmpathyLevel);
+
+      // Generate speech for the AI response
+      try {
+        const speechResponse = await generateSpeech({ text: aiResponse.response, voiceGender: currentVoiceGender });
+        setAudioDataUri(speechResponse.audioDataUri);
+      } catch (speechError) {
+         console.error("Error generating speech for AI response:", speechError);
+         toast({ variant: "destructive", title: "Speech Error", description: "Could not generate audio for the AI response." });
+      }
 
     } catch (error) {
       console.error("Error getting AI response:", error);
@@ -108,9 +133,9 @@ export default function TherapyPage() {
     }
     setIsLoadingAiResponse(false);
   };
-
-  const startChatting = () => {
-    setStage('chat');
+  
+  const handleVoiceGenderChange = (gender: VoiceGender) => {
+    setCurrentVoiceGender(gender);
   };
 
   return (
@@ -138,7 +163,10 @@ export default function TherapyPage() {
                <ChatInterface messages={messages} onSendMessage={handleSendMessage} isLoadingAiResponse={isLoadingAiResponse} />
             </div>
             <div className="space-y-6 lg:sticky lg:top-24">
-              <AudioControls onVoiceChange={(voice) => console.log("Voice changed to:", voice)} />
+              <AudioControls 
+                initialVoice={currentVoiceGender}
+                onVoiceChange={handleVoiceGenderChange} 
+              />
                <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2"><Info className="h-5 w-5 text-primary"/> Session Context</CardTitle>
@@ -154,6 +182,7 @@ export default function TherapyPage() {
           </div>
         )}
       </div>
+      <audio ref={audioRef} src={audioDataUri || undefined} hidden />
     </AppShell>
   );
 }
