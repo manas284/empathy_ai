@@ -29,6 +29,7 @@ export default function TherapyPage() {
   const [isLoadingAiResponse, setIsLoadingAiResponse] = useState(false);
   const [currentVoiceGender, setCurrentVoiceGender] = useState<VoiceGender>('female');
   const [audioDataUri, setAudioDataUri] = useState<string | null>(null);
+  const [isAiAudioPlaying, setIsAiAudioPlaying] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const { toast } = useToast();
@@ -36,45 +37,68 @@ export default function TherapyPage() {
   useEffect(() => {
     const audioElement = audioRef.current;
     if (audioElement) {
+      audioElement.onplay = () => setIsAiAudioPlaying(true);
+      audioElement.onended = () => {
+        setIsAiAudioPlaying(false);
+        setAudioDataUri(null); // Clear URI after playing
+      };
+      audioElement.onpause = () => setIsAiAudioPlaying(false); // Could be paused by user or system
+      audioElement.onerror = () => {
+        setIsAiAudioPlaying(false);
+        setAudioDataUri(null);
+        toast({ variant: "destructive", title: "Audio Playback Error", description: "Could not play the AI's voice." });
+      };
+
+
       if (audioDataUri) {
         audioElement.src = audioDataUri;
         const playPromise = audioElement.play();
         if (playPromise !== undefined) {
           playPromise.catch(error => {
-            // AbortError is expected if playback is interrupted by a new play request, pause, or src change.
             if (error.name === 'AbortError') {
               console.log("Audio playback aborted (expected interruption).");
             } else {
               console.error("Error playing audio:", error);
-              toast({ variant: "destructive", title: "Audio Playback Error", description: "Could not play the AI's voice." });
+              // Toast is handled by onerror now
             }
+            setIsAiAudioPlaying(false);
           });
         }
       } else {
-        // If audioDataUri is null, ensure audio is stopped and reset
         audioElement.pause();
-        // Check if src exists before trying to removeAttribute and load
-        // This avoids "Failed to load" errors if src was never set or already cleared
         if (audioElement.currentSrc && audioElement.currentSrc !== '') {
-          audioElement.removeAttribute('src'); // Clear the source
-          audioElement.load(); // Reset the media element state, aborts loading.
+          audioElement.removeAttribute('src');
+          audioElement.load();
         }
+        setIsAiAudioPlaying(false);
       }
     }
-  }, [audioDataUri, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioDataUri]); // Removed toast from dependencies as it's stable
 
   const playAiSpeech = async (text: string, voice: VoiceGender) => {
-    if (audioRef.current) {
-      audioRef.current.pause(); // Explicitly pause current playback. This may cause AbortError for the *previous* play, which is handled.
+    if (audioRef.current && !audioRef.current.paused) {
+      audioRef.current.pause();
     }
+    setAudioDataUri(null); // Explicitly clear old audio URI to trigger cleanup and stop current playback
+
+    // A small delay to ensure the audio element has time to process the pause/reset
+    // This can sometimes help with race conditions in audio playback.
+    await new Promise(resolve => setTimeout(resolve, 50));
+
 
     try {
+      setIsLoadingAiResponse(true); // Indicate AI is "active"
       const speechResponse = await generateSpeech({ text, voiceGender: voice });
-      setAudioDataUri(speechResponse.audioDataUri); // Trigger useEffect to set new src and play.
+      setAudioDataUri(speechResponse.audioDataUri); // This will trigger useEffect to play
     } catch (speechError) {
       console.error("Error generating speech:", speechError);
       toast({ variant: "destructive", title: "Speech Generation Error", description: "Could not generate audio for the AI response." });
-      setAudioDataUri(null); // Ensure audioDataUri is null if speech generation fails, to trigger cleanup.
+      setAudioDataUri(null);
+      setIsAiAudioPlaying(false); // Ensure this is reset
+    } finally {
+       // setIsLoadingAiResponse(false); // Loading AI response is done once TTS is fetched/playing starts or fails
+       // isAiAudioPlaying will handle the "speaking" state
     }
   };
 
@@ -85,7 +109,7 @@ export default function TherapyPage() {
     if (audioRef.current) {
       audioRef.current.pause();
     }
-    setAudioDataUri(null); // Clear any existing audio initially
+    setAudioDataUri(null);
 
     try {
       const [recoResponse, adaptResponse] = await Promise.all([
@@ -102,8 +126,9 @@ export default function TherapyPage() {
         text: initialAiText,
         timestamp: new Date(),
       }]);
-
+      
       await playAiSpeech(initialAiText, currentVoiceGender);
+      // setIsLoadingAiResponse will be set to false by playAiSpeech or its effects
 
       setStage('chat');
       toast({ title: "Profile processed", description: "Personalized therapy session ready." });
@@ -113,13 +138,14 @@ export default function TherapyPage() {
       if (audioRef.current) {
           audioRef.current.pause();
       }
-      setAudioDataUri(null); // Ensure audio is cleared on error
+      setAudioDataUri(null);
+      setIsAiAudioPlaying(false);
     }
     setIsLoading(false);
   };
 
   const handleSendMessage = async (messageText: string) => {
-    if (!userProfile) return;
+    if (!userProfile || !messageText.trim()) return;
 
     const newUserMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -129,17 +155,22 @@ export default function TherapyPage() {
     };
     setMessages(prev => [...prev, newUserMessage]);
     setIsLoadingAiResponse(true);
+    setAudioDataUri(null); // Stop any current AI speech
 
     try {
       let apiAnxietyLevel: 'Low' | 'High' = 'Low';
-      if (userProfile.anxietyLevel === 'Medium') apiAnxietyLevel = 'High'; // Treat Medium as High for API
+      if (userProfile.anxietyLevel === 'Medium') apiAnxietyLevel = 'High';
       else if (userProfile.anxietyLevel === 'High') apiAnxietyLevel = 'High';
+
+      const lastMessages = messages.slice(-4).map(msg => ({role: msg.sender, text: msg.text}));
+
 
       const aiResponse = await generateEmpatheticResponse({
         ...userProfile,
         anxietyLevel: apiAnxietyLevel,
         currentMessage: messageText,
         empathyLevel: empathyLevel,
+        chatHistory: lastMessages,
       });
 
       const newAiMessage: ChatMessage = {
@@ -166,18 +197,45 @@ export default function TherapyPage() {
       if (audioRef.current) {
           audioRef.current.pause();
       }
-      setAudioDataUri(null); // Ensure audio is cleared on error
+      setAudioDataUri(null);
+      setIsAiAudioPlaying(false);
     }
-    setIsLoadingAiResponse(false);
+    // setIsLoadingAiResponse(false); // Set to false when speech starts playing or generation fails in playAiSpeech
   };
   
+  // This effect now ensures setIsLoadingAiResponse is false when AI is not actively fetching/playing.
+  useEffect(() => {
+    if (!isAiAudioPlaying && audioDataUri === null) {
+        // If audio is not playing and there's no audio URI pending,
+        // and an AI response was previously loading (for speech gen), set it to false.
+        // This ensures loading spinner stops if speech gen fails or after it plays.
+        if(isLoadingAiResponse && !isAiAudioPlaying && audioDataUri === null){
+             // Check if the last message was from AI, if so, we are likely done.
+            if(messages.length > 0 && messages[messages.length - 1].sender === 'ai'){
+                setIsLoadingAiResponse(false);
+            }
+            // If user just sent a message, keep it true until AI responds.
+            else if (messages.length > 0 && messages[messages.length - 1].sender === 'user') {
+                // Keep it true, waiting for AI text and speech
+            } else {
+                // Default case, no messages or initial state.
+                setIsLoadingAiResponse(false);
+            }
+        }
+    }
+  }, [isAiAudioPlaying, audioDataUri, messages, isLoadingAiResponse]);
+
+
   const handleVoiceGenderChange = (gender: VoiceGender) => {
     setCurrentVoiceGender(gender);
     if (audioRef.current) {
       audioRef.current.pause();
     }
-    setAudioDataUri(null); // This will trigger the useEffect to reset the audio element
+    setAudioDataUri(null);
+    setIsAiAudioPlaying(false);
   };
+  
+  const isAiTurnActive = isLoadingAiResponse || isAiAudioPlaying;
 
   return (
     <AppShell>
@@ -201,7 +259,12 @@ export default function TherapyPage() {
         {stage === 'chat' && userProfile && (
           <div className="grid lg:grid-cols-3 gap-8 items-start">
             <div className="lg:col-span-2">
-               <ChatInterface messages={messages} onSendMessage={handleSendMessage} isLoadingAiResponse={isLoadingAiResponse} />
+               <ChatInterface 
+                 messages={messages} 
+                 onSendMessage={handleSendMessage} 
+                 isLoadingAiResponse={isLoadingAiResponse}
+                 isAiSpeaking={isAiTurnActive}
+                />
             </div>
             <div className="space-y-6 lg:sticky lg:top-24">
               <AudioControls 
