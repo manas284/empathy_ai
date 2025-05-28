@@ -1,3 +1,4 @@
+
 export interface UserProfile {
   age: number;
   genderIdentity: 'Male' | 'Female' | 'Non-Binary';
@@ -6,11 +7,12 @@ export interface UserProfile {
   anxietyLevel: 'Low' | 'Medium' | 'High';
   breakupType: 'Mutual' | 'Ghosting' | 'Cheating' | 'Demise' | 'Divorce';
   background: string;
-  therapeuticNeeds: ('CBT' | 'IPT' | 'Grief Counseling')[];
+  // therapeuticNeeds is removed as AI will identify them
 }
 
-export interface TherapyRecommendation {
+export interface PersonalizedTherapyOutput {
   recommendations: string;
+  identifiedTherapeuticNeeds: string[];
 }
 
 export interface AdaptedLanguageStyle {
@@ -22,4 +24,5 @@ export interface ChatMessage {
   sender: 'user' | 'ai';
   text: string;
   timestamp: Date;
+  detectedSentiment?: string; // Added for sentiment display
 }

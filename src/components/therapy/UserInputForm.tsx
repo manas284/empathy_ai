@@ -23,18 +23,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
+// Checkbox no longer needed for therapeuticNeeds
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import type { UserProfile } from '@/types';
+import type { UserProfile } from '@/types'; // UserProfile type will be updated
 import { Slider } from '@/components/ui/slider';
 import { useState } from 'react';
 
-const therapeuticNeedsItems = [
-  { id: 'CBT', label: 'CBT: Manage anxiety and guilt' },
-  { id: 'IPT', label: 'IPT: Navigate family dynamics' },
-  { id: 'Grief Counseling', label: 'Grief Counseling: Process emotional chaos' },
-] as const;
-
+// therapeuticNeeds removed from schema
 const userProfileSchema = z.object({
   age: z.coerce.number().min(13, "Must be at least 13").max(100, "Max age is 100"),
   genderIdentity: z.enum(['Male', 'Female', 'Non-Binary']),
@@ -43,11 +38,10 @@ const userProfileSchema = z.object({
   anxietyLevel: z.enum(['Low', 'Medium', 'High']),
   breakupType: z.enum(['Mutual', 'Ghosting', 'Cheating', 'Demise', 'Divorce']),
   background: z.string().min(10, "Please provide some background information (min 10 characters).").max(5000),
-  therapeuticNeeds: z.array(z.enum(['CBT', 'IPT', 'Grief Counseling'])).min(1, "Select at least one therapeutic need."),
 });
 
 interface UserInputFormProps {
-  onSubmit: (data: UserProfile) => void;
+  onSubmit: (data: UserProfile) => void; // UserProfile will no longer contain therapeuticNeeds
   isLoading: boolean;
 }
 
@@ -64,7 +58,7 @@ export function UserInputForm({ onSubmit, isLoading }: UserInputFormProps) {
       anxietyLevel: 'Medium',
       breakupType: 'Mutual',
       background: '',
-      therapeuticNeeds: [],
+      // therapeuticNeeds default removed
     },
   });
 
@@ -217,65 +211,19 @@ export function UserInputForm({ onSubmit, isLoading }: UserInputFormProps) {
                   <FormLabel>Background</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Briefly describe your current situation or what you'd like to discuss."
+                      placeholder="Briefly describe your current situation or what you'd like to discuss. The AI will use this to understand your needs."
                       className="min-h-[100px]"
                       {...field}
                     />
                   </FormControl>
-                  <FormDescription>This helps the AI understand your context better.</FormDescription>
+                  <FormDescription>This helps the AI understand your context and identify suitable therapeutic approaches.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="therapeuticNeeds"
-              render={({ field }) => (
-                <FormItem>
-                  <div className="mb-4">
-                    <FormLabel className="text-base">Therapeutic Needs</FormLabel>
-                    <FormDescription>
-                      Select areas where you feel you need support.
-                    </FormDescription>
-                  </div>
-                  {therapeuticNeedsItems.map((item) => (
-                    <FormField
-                      key={item.id}
-                      control={form.control}
-                      name="therapeuticNeeds"
-                      render={({ field: itemField }) => {
-                        return (
-                          <FormItem
-                            key={item.id}
-                            className="flex flex-row items-start space-x-3 space-y-0"
-                          >
-                            <FormControl>
-                              <Checkbox
-                                checked={itemField.value?.includes(item.id)}
-                                onCheckedChange={(checked) => {
-                                  return checked
-                                    ? itemField.onChange([...(itemField.value || []), item.id])
-                                    : itemField.onChange(
-                                        (itemField.value || []).filter(
-                                          (value) => value !== item.id
-                                        )
-                                      );
-                                }}
-                              />
-                            </FormControl>
-                            <FormLabel className="font-normal">
-                              {item.label}
-                            </FormLabel>
-                          </FormItem>
-                        );
-                      }}
-                    />
-                  ))}
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* TherapeuticNeeds FormField removed */}
+
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? 'Processing...' : 'Start Personalized Session'}
             </Button>

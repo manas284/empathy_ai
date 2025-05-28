@@ -1,6 +1,7 @@
+
 'use server';
 /**
- * @fileOverview Adapts language (British English with medical terms) and therapeutic techniques based on user input.
+ * @fileOverview Adapts language (British English with medical terms) and therapeutic techniques based on user input and AI-inferred needs.
  *
  * - adaptLanguageAndTechniques - A function that handles the adaptation of language and techniques.
  * - AdaptLanguageAndTechniquesInput - The input type for the adaptLanguageAndTechniques function.
@@ -10,6 +11,7 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
+// UserProfile fields are now directly part of the input schema
 const AdaptLanguageAndTechniquesInputSchema = z.object({
   age: z.number().describe('The age of the user.'),
   genderIdentity: z
@@ -25,14 +27,13 @@ const AdaptLanguageAndTechniquesInputSchema = z.object({
   breakupType: z
     .enum(['Mutual', 'Ghosting', 'Cheating', 'Demise', 'Divorce'])
     .describe('The type of breakup the user experienced.'),
-  therapeuticNeeds:
-    z.array(z.enum(['CBT', 'IPT', 'Grief Counseling'])).describe('The therapeutic needs of the user (CBT, IPT, Grief Counseling).'),
-  additionalContext: z.string().optional().describe('Any additional context about the user.'),
+  // therapeuticNeeds removed, AI will infer
+  additionalContext: z.string().optional().describe('Any additional context about the user, typically their background statement.'),
 });
 export type AdaptLanguageAndTechniquesInput = z.infer<typeof AdaptLanguageAndTechniquesInputSchema>;
 
 const AdaptLanguageAndTechniquesOutputSchema = z.object({
-  adaptedLanguage: z.string().describe('The adapted language and therapeutic techniques for the user.'),
+  adaptedLanguage: z.string().describe('The adapted language and therapeutic techniques for the user, reflecting AI-inferred needs.'),
 });
 export type AdaptLanguageAndTechniquesOutput = z.infer<typeof AdaptLanguageAndTechniquesOutputSchema>;
 
@@ -46,7 +47,7 @@ const prompt = ai.definePrompt({
   name: 'adaptLanguageAndTechniquesPrompt',
   input: {schema: AdaptLanguageAndTechniquesInputSchema},
   output: {schema: AdaptLanguageAndTechniquesOutputSchema},
-  prompt: `Based on the user's information, adapt the language and therapeutic techniques to provide relevant and hyper-personalized support. Use British English and medical terms where appropriate.
+  prompt: `Based on the user's information, infer the most relevant therapeutic approaches (like CBT, IPT, Grief Counseling) that would suit their situation. Then, adapt the language and therapeutic techniques to provide relevant and hyper-personalized support. Use British English and medical terms where appropriate.
 
 User Information:
 Age: {{{age}}}
@@ -55,11 +56,11 @@ Ethnicity: {{{ethnicity}}}
 Vulnerable Score: {{{vulnerableScore}}}
 Anxiety Level: {{{anxietyLevel}}}
 Breakup Type: {{{breakupType}}}
-Therapeutic Needs: {{#each therapeuticNeeds}}{{{this}}}{{#unless @last}}, {{/unless}}{{/each}}
 {{#if additionalContext}}
-Additional Context: {{{additionalContext}}}
+Background/Context: {{{additionalContext}}}
 {{/if}}
 
+Your task is to generate the 'adaptedLanguage' string. This string should describe the AI's therapeutic style and language, reflecting the needs you've inferred for this user.
 Adapted Language and Techniques:`,
 });
 
@@ -71,6 +72,9 @@ const adaptLanguageAndTechniquesFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await prompt(input);
-    return output!;
+    if (!output) {
+        throw new Error('AI failed to adapt language and techniques.');
+    }
+    return output;
   }
 );
