@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -5,20 +6,34 @@ import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Volume2, Play, Pause, FastForward, User, Speaker } from 'lucide-react';
+import { Volume2, Play, Pause, FastForward, User, Speaker, Waves } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export type VoiceGender = 'male' | 'female';
 
 interface AudioControlsProps {
-  onVoiceChange: (voice: VoiceGender) => void; // Changed to be non-optional
+  onVoiceChange: (voice: VoiceGender) => void;
   initialVoice?: VoiceGender;
+  onVolumeChange: (volume: number) => void; // Volume 0-1
+  onPlaybackSpeedChange: (speed: number) => void; // Speed e.g., 0.5-2.0
+  onToggleRelaxationExercise: () => void;
+  isRelaxationExercisePlaying: boolean;
+  initialVolume?: number; // 0-100
+  initialPlaybackSpeed?: number; // e.g., 0.5-2.0
 }
 
-export function AudioControls({ onVoiceChange, initialVoice = 'female' }: AudioControlsProps) {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [volume, setVolume] = useState([50]);
-  const [playbackSpeed, setPlaybackSpeed] = useState([1]);
+export function AudioControls({
+  onVoiceChange,
+  initialVoice = 'female',
+  onVolumeChange,
+  onPlaybackSpeedChange,
+  onToggleRelaxationExercise,
+  isRelaxationExercisePlaying,
+  initialVolume = 50,
+  initialPlaybackSpeed = 1,
+}: AudioControlsProps) {
+  const [volume, setVolume] = useState([initialVolume]);
+  const [playbackSpeed, setPlaybackSpeed] = useState([initialPlaybackSpeed]);
   const [selectedVoice, setSelectedVoice] = useState<VoiceGender>(initialVoice);
   const [isClient, setIsClient] = useState(false);
 
@@ -26,29 +41,25 @@ export function AudioControls({ onVoiceChange, initialVoice = 'female' }: AudioC
     setIsClient(true);
   }, []);
 
-  // Effect to inform parent about initial or changed voice preference, only on client
   useEffect(() => {
     if (isClient) {
       onVoiceChange(selectedVoice);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedVoice, isClient]); // Rerun if selectedVoice or isClient changes
+  }, [selectedVoice, isClient]);
 
-  const handlePlayPause = () => {
-    setIsPlaying(!isPlaying);
-    console.log("Play/Pause Relaxation Exercise (visual only)");
-  };
-
-  const handleVolumeChange = (value: number[]) => {
+  const handleVolumeChangeInternal = (value: number[]) => {
     setVolume(value);
+    onVolumeChange(value[0] / 100); // Convert 0-100 to 0-1
   };
 
-  const handlePlaybackSpeedChange = (value: number[]) => {
+  const handlePlaybackSpeedChangeInternal = (value: number[]) => {
     setPlaybackSpeed(value);
+    onPlaybackSpeedChange(value[0]);
   };
 
   const handleVoiceChangeInternal = (value: VoiceGender) => {
-    setSelectedVoice(value); // This will trigger the useEffect above to call onVoiceChange
+    setSelectedVoice(value);
   };
   
   if (!isClient) {
@@ -83,39 +94,39 @@ export function AudioControls({ onVoiceChange, initialVoice = 'female' }: AudioC
       <CardContent className="space-y-6">
         <div className="space-y-2">
           <Label htmlFor="volume-slider" className="flex items-center gap-2">
-            <Volume2 className="h-5 w-5" /> Volume: {volume[0]}% (Visual Only)
+            <Volume2 className="h-5 w-5" /> Volume: {volume[0]}%
           </Label>
           <Slider
             id="volume-slider"
-            defaultValue={[50]}
+            defaultValue={[initialVolume]}
             max={100}
             step={1}
             value={volume}
-            onValueChange={handleVolumeChange}
+            onValueChange={handleVolumeChangeInternal}
             aria-label="Volume"
           />
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="speed-slider" className="flex items-center gap-2">
-            <FastForward className="h-5 w-5" /> Playback Speed: {playbackSpeed[0]}x (Visual Only)
+            <FastForward className="h-5 w-5" /> Playback Speed: {playbackSpeed[0]}x
           </Label>
           <Slider
             id="speed-slider"
-            defaultValue={[1]}
+            defaultValue={[initialPlaybackSpeed]}
             min={0.5}
             max={2}
             step={0.25}
             value={playbackSpeed}
-            onValueChange={handlePlaybackSpeedChange}
+            onValueChange={handlePlaybackSpeedChangeInternal}
             aria-label="Playback Speed"
           />
         </div>
         
         <div className="flex items-center justify-center space-x-4">
-            <Button onClick={handlePlayPause} variant="outline" size="lg" aria-label={isPlaying ? 'Pause Exercise' : 'Play Relaxation Exercise'}>
-              {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
-              <span className="ml-2">{isPlaying ? 'Pause Exercise' : 'Relaxation Exercise'} (Visual Only)</span>
+            <Button onClick={onToggleRelaxationExercise} variant="outline" size="lg" aria-label={isRelaxationExercisePlaying ? 'Pause Exercise' : 'Play Relaxation Exercise'}>
+              {isRelaxationExercisePlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6" />}
+              <span className="ml-2">{isRelaxationExercisePlaying ? 'Pause Exercise' : 'Relaxation Exercise'}</span>
             </Button>
         </div>
 

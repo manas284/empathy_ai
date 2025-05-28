@@ -17,6 +17,7 @@ import { generateEmpatheticResponse } from '@/ai/flows/generate-empathetic-respo
 import { generateSpeech } from '@/ai/flows/generate-speech-flow';
 
 type TherapyStage = 'initialData' | 'recommendations' | 'chat';
+const PLACEHOLDER_RELAXATION_AUDIO_URL = "https://www.soundjay.com/nature/sounds/river-1.mp3"; // Replace with your desired audio
 
 export default function TherapyPage() {
   const [stage, setStage] = useState<TherapyStage>('initialData');
@@ -27,89 +28,126 @@ export default function TherapyPage() {
   const [empathyLevel, setEmpathyLevel] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingAiResponse, setIsLoadingAiResponse] = useState(false);
+  
+  // AI Speech Audio
   const [currentVoiceGender, setCurrentVoiceGender] = useState<VoiceGender>('female');
   const [audioDataUri, setAudioDataUri] = useState<string | null>(null);
   const [isAiAudioPlaying, setIsAiAudioPlaying] = useState(false);
+  const aiAudioRef = useRef<HTMLAudioElement>(null);
+  const [currentVolume, setCurrentVolume] = useState(0.5); // Default volume 50%
+  const [currentPlaybackSpeed, setCurrentPlaybackSpeed] = useState(1); // Default speed 1x
 
-  const audioRef = useRef<HTMLAudioElement>(null);
+  // Relaxation Exercise Audio
+  const relaxationAudioRef = useRef<HTMLAudioElement>(null);
+  const [isRelaxationExercisePlaying, setIsRelaxationExercisePlaying] = useState(false);
+
+
   const { toast } = useToast();
 
+  // Effect for AI speech audio element
   useEffect(() => {
-    const audioElement = audioRef.current;
+    const audioElement = aiAudioRef.current;
     if (audioElement) {
       audioElement.onplay = () => setIsAiAudioPlaying(true);
       audioElement.onended = () => {
         setIsAiAudioPlaying(false);
-        setAudioDataUri(null); // Clear URI after playing
+        setAudioDataUri(null); 
       };
-      audioElement.onpause = () => setIsAiAudioPlaying(false); // Could be paused by user or system
+      audioElement.onpause = () => setIsAiAudioPlaying(false); 
       audioElement.onerror = () => {
         setIsAiAudioPlaying(false);
         setAudioDataUri(null);
         toast({ variant: "destructive", title: "Audio Playback Error", description: "Could not play the AI's voice." });
       };
 
+      audioElement.volume = currentVolume;
+      audioElement.playbackRate = currentPlaybackSpeed;
 
       if (audioDataUri) {
-        audioElement.src = audioDataUri;
+        if (audioElement.src !== audioDataUri) {
+          audioElement.src = audioDataUri;
+        }
         const playPromise = audioElement.play();
         if (playPromise !== undefined) {
           playPromise.catch(error => {
             if (error.name === 'AbortError') {
-              console.log("Audio playback aborted (expected interruption).");
+              console.log("AI audio playback aborted (expected interruption).");
             } else {
-              console.error("Error playing audio:", error);
-              // Toast is handled by onerror now
+              console.error("Error playing AI audio:", error);
             }
             setIsAiAudioPlaying(false);
           });
         }
       } else {
-        audioElement.pause();
+        if (!audioElement.paused) {
+          audioElement.pause();
+        }
         if (audioElement.currentSrc && audioElement.currentSrc !== '') {
           audioElement.removeAttribute('src');
-          audioElement.load();
+          // audioElement.load(); // Not always necessary and can cause issues
         }
-        setIsAiAudioPlaying(false);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioDataUri]); // Removed toast from dependencies as it's stable
+  }, [audioDataUri, currentVolume, currentPlaybackSpeed]);
+
+
+  // Effect for Relaxation Exercise audio element
+  useEffect(() => {
+    const audioElement = relaxationAudioRef.current;
+    if (audioElement) {
+      audioElement.onplay = () => setIsRelaxationExercisePlaying(true);
+      audioElement.onended = () => setIsRelaxationExercisePlaying(false);
+      audioElement.onpause = () => setIsRelaxationExercisePlaying(false);
+      audioElement.onerror = () => {
+        setIsRelaxationExercisePlaying(false);
+        toast({ variant: "destructive", title: "Audio Playback Error", description: "Could not play the relaxation exercise." });
+      };
+      audioElement.volume = currentVolume; // Relaxation exercise also uses main volume
+    }
+  }, [currentVolume]);
+
+
+  const stopAiSpeech = () => {
+    if (aiAudioRef.current && !aiAudioRef.current.paused) {
+      aiAudioRef.current.pause();
+    }
+    setAudioDataUri(null);
+    setIsAiAudioPlaying(false);
+  };
+
+  const stopRelaxationExercise = () => {
+    if (relaxationAudioRef.current && !relaxationAudioRef.current.paused) {
+      relaxationAudioRef.current.pause();
+    }
+    setIsRelaxationExercisePlaying(false);
+  };
 
   const playAiSpeech = async (text: string, voice: VoiceGender) => {
-    if (audioRef.current && !audioRef.current.paused) {
-      audioRef.current.pause();
-    }
-    setAudioDataUri(null); // Explicitly clear old audio URI to trigger cleanup and stop current playback
+    stopRelaxationExercise(); // Ensure relaxation exercise is stopped
+    stopAiSpeech(); // Stop any current AI speech
 
-    // A small delay to ensure the audio element has time to process the pause/reset
-    // This can sometimes help with race conditions in audio playback.
-    await new Promise(resolve => setTimeout(resolve, 50));
-
+    await new Promise(resolve => setTimeout(resolve, 50)); // Short delay for cleanup
 
     try {
-      setIsLoadingAiResponse(true); // Indicate AI is "active"
+      setIsLoadingAiResponse(true);
       const speechResponse = await generateSpeech({ text, voiceGender: voice });
       setAudioDataUri(speechResponse.audioDataUri); // This will trigger useEffect to play
     } catch (speechError) {
       console.error("Error generating speech:", speechError);
       toast({ variant: "destructive", title: "Speech Generation Error", description: "Could not generate audio for the AI response." });
       setAudioDataUri(null);
-      setIsAiAudioPlaying(false); // Ensure this is reset
-    } finally {
-       // setIsLoadingAiResponse(false); // Loading AI response is done once TTS is fetched/playing starts or fails
-       // isAiAudioPlaying will handle the "speaking" state
-    }
+      setIsAiAudioPlaying(false); 
+    } 
+    // setIsLoadingAiResponse is handled by the isAiTurnActive logic / useEffect
   };
 
   const handleProfileSubmit = async (data: UserProfile) => {
     setIsLoading(true);
     setUserProfile(data);
     
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
-    setAudioDataUri(null);
+    stopAiSpeech();
+    stopRelaxationExercise();
 
     try {
       const [recoResponse, adaptResponse] = await Promise.all([
@@ -128,17 +166,13 @@ export default function TherapyPage() {
       }]);
       
       await playAiSpeech(initialAiText, currentVoiceGender);
-      // setIsLoadingAiResponse will be set to false by playAiSpeech or its effects
 
       setStage('chat');
       toast({ title: "Profile processed", description: "Personalized therapy session ready." });
     } catch (error) {
       console.error("Error processing profile:", error);
       toast({ variant: "destructive", title: "Error", description: "Could not process your profile. Please try again." });
-      if (audioRef.current) {
-          audioRef.current.pause();
-      }
-      setAudioDataUri(null);
+      stopAiSpeech();
       setIsAiAudioPlaying(false);
     }
     setIsLoading(false);
@@ -155,7 +189,8 @@ export default function TherapyPage() {
     };
     setMessages(prev => [...prev, newUserMessage]);
     setIsLoadingAiResponse(true);
-    setAudioDataUri(null); // Stop any current AI speech
+    stopAiSpeech(); 
+    stopRelaxationExercise();
 
     try {
       let apiAnxietyLevel: 'Low' | 'High' = 'Low';
@@ -163,7 +198,6 @@ export default function TherapyPage() {
       else if (userProfile.anxietyLevel === 'High') apiAnxietyLevel = 'High';
 
       const lastMessages = messages.slice(-4).map(msg => ({role: msg.sender, text: msg.text}));
-
 
       const aiResponse = await generateEmpatheticResponse({
         ...userProfile,
@@ -177,6 +211,7 @@ export default function TherapyPage() {
         id: crypto.randomUUID(),
         sender: 'ai',
         text: aiResponse.response,
+        detectedSentiment: aiResponse.detectedSentiment,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, newAiMessage]);
@@ -194,31 +229,20 @@ export default function TherapyPage() {
       };
       setMessages(prev => [...prev, errorAiMessage]);
       toast({ variant: "destructive", title: "Error", description: "Could not get AI response." });
-      if (audioRef.current) {
-          audioRef.current.pause();
-      }
-      setAudioDataUri(null);
+      stopAiSpeech();
       setIsAiAudioPlaying(false);
     }
-    // setIsLoadingAiResponse(false); // Set to false when speech starts playing or generation fails in playAiSpeech
   };
   
-  // This effect now ensures setIsLoadingAiResponse is false when AI is not actively fetching/playing.
   useEffect(() => {
     if (!isAiAudioPlaying && audioDataUri === null) {
-        // If audio is not playing and there's no audio URI pending,
-        // and an AI response was previously loading (for speech gen), set it to false.
-        // This ensures loading spinner stops if speech gen fails or after it plays.
-        if(isLoadingAiResponse && !isAiAudioPlaying && audioDataUri === null){
-             // Check if the last message was from AI, if so, we are likely done.
+        if(isLoadingAiResponse){
             if(messages.length > 0 && messages[messages.length - 1].sender === 'ai'){
                 setIsLoadingAiResponse(false);
             }
-            // If user just sent a message, keep it true until AI responds.
             else if (messages.length > 0 && messages[messages.length - 1].sender === 'user') {
                 // Keep it true, waiting for AI text and speech
             } else {
-                // Default case, no messages or initial state.
                 setIsLoadingAiResponse(false);
             }
         }
@@ -228,11 +252,36 @@ export default function TherapyPage() {
 
   const handleVoiceGenderChange = (gender: VoiceGender) => {
     setCurrentVoiceGender(gender);
-    if (audioRef.current) {
-      audioRef.current.pause();
+    stopAiSpeech();
+  };
+
+  const handleVolumeChange = (volume: number) => {
+    setCurrentVolume(volume);
+  };
+
+  const handlePlaybackSpeedChange = (speed: number) => {
+    setCurrentPlaybackSpeed(speed);
+  };
+  
+  const handleToggleRelaxationExercise = () => {
+    const audio = relaxationAudioRef.current;
+    if (!audio) return;
+
+    if (isRelaxationExercisePlaying) {
+      audio.pause();
+    } else {
+      stopAiSpeech(); // Ensure AI speech is stopped
+      if (audio.src !== PLACEHOLDER_RELAXATION_AUDIO_URL) {
+        audio.src = PLACEHOLDER_RELAXATION_AUDIO_URL;
+        audio.load(); // Ensure the new source is loaded
+      }
+      audio.play().catch(err => {
+        console.error("Error playing relaxation exercise:", err);
+        toast({variant: "destructive", title: "Playback Error", description: "Could not play relaxation exercise."});
+        setIsRelaxationExercisePlaying(false);
+      });
     }
-    setAudioDataUri(null);
-    setIsAiAudioPlaying(false);
+    setIsRelaxationExercisePlaying(!isRelaxationExercisePlaying);
   };
   
   const isAiTurnActive = isLoadingAiResponse || isAiAudioPlaying;
@@ -269,7 +318,13 @@ export default function TherapyPage() {
             <div className="space-y-6 lg:sticky lg:top-24">
               <AudioControls 
                 initialVoice={currentVoiceGender}
-                onVoiceChange={handleVoiceGenderChange} 
+                onVoiceChange={handleVoiceGenderChange}
+                onVolumeChange={handleVolumeChange}
+                onPlaybackSpeedChange={handlePlaybackSpeedChange}
+                onToggleRelaxationExercise={handleToggleRelaxationExercise}
+                isRelaxationExercisePlaying={isRelaxationExercisePlaying}
+                initialVolume={currentVolume * 100}
+                initialPlaybackSpeed={currentPlaybackSpeed}
               />
                <Card>
                 <CardHeader>
@@ -280,13 +335,17 @@ export default function TherapyPage() {
                   {recommendations && <p><strong>Focus:</strong> {recommendations.recommendations.substring(0,100)}...</p>}
                   {adaptedStyle && <p><strong>Style:</strong> {adaptedStyle.adaptedLanguage.substring(0,100)}...</p>}
                   <p>AI Empathy Level: {empathyLevel}/5</p>
+                  {messages.slice(-1)[0]?.sender === 'ai' && messages.slice(-1)[0].detectedSentiment && (
+                    <p><strong>AI Detected Sentiment:</strong> {messages.slice(-1)[0].detectedSentiment}</p>
+                  )}
                 </CardContent>
               </Card>
             </div>
           </div>
         )}
       </div>
-      <audio ref={audioRef} hidden />
+      <audio ref={aiAudioRef} hidden />
+      <audio ref={relaxationAudioRef} hidden loop /> {/* Loop relaxation audio if desired */}
     </AppShell>
   );
 }
